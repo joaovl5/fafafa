@@ -1,0 +1,136 @@
+#runner {
+  background-color: var(--surface);
+  padding: 20px;
+  min-width: 300px;
+}
+
+#runner-input {
+  font-weight: bold;
+  background-color: var(--surface);
+  color: var(--foreground);
+  border-radius: 0px;
+  padding: 10px;
+}
+
+#runner-input selection {
+  color: var(--background);
+  background-color: var(--primary);
+}
+
+#runner-close-button,
+#config-button,
+#new-session-button {
+  background-color: var(--surface);
+  border-radius: 0px;
+  padding: 8px;
+}
+
+#runner-close-button:hover,
+#runner-close-button:focus,
+#config-button:hover,
+#config-button:focus,
+#new-session-button:hover,
+#new-session-button:focus {
+  background-color: var(--surface-bright);
+}
+
+#runner-close-button:active {
+  background-color: var(--red-dim);
+}
+
+#runner-close-label {
+  color: var(--red-dim);
+  font-size: 24px;
+}
+
+#runner-close-button:active #runner-close-label {
+  color: var(--shadow);
+}
+
+#config-button:active,
+#new-session-button:active {
+  background-color: var(--primary);
+}
+
+#config-label,
+#new-session-label {
+  color: var(--primary);
+  font-size: 24px;
+}
+
+#config-button:active #config-label,
+#new-session-button:active #new-session-label {
+  color: var(--shadow);
+}
+
+#runner-scrolled-window {
+  border-radius: 0px;
+}
+
+#runner-scrolled-window scrollbar {
+  background-color: var(--surface);
+  padding: 4px;
+  margin-left: 6px;
+}
+
+#runner-scrolled-window slider {
+  border-radius: 0px;
+  min-width: 16px;
+  min-height: 48px;
+  background-color: var(--primary);
+}
+
+#slot-button {
+  border-radius: 0px;
+  padding: 4px;
+  transition: padding 0.1s ease;
+  animation: loadSlot 0.5s ease;
+}
+
+@keyframes loadSlot {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+#slot-button:hover,
+#slot-button:focus,
+#slot-button:selected,
+#slot-button.selected {
+  background-color: var(--surface-bright);
+  padding-left: 15px;
+}
+
+#slot-button:active {
+  background-color: var(--primary);
+}
+
+#app-icon {
+  margin: -8px;
+  margin-right: 4px;
+}
+
+#app-label {
+  color: var(--foreground);
+  font-weight: bold;
+}
+
+#slot-button:hover #app-label,
+#slot-button:focus #app-label,
+#slot-button:selected #app-label,
+#slot-button.selected #app-label {
+  color: var(--primary);
+}
+
+#slot-button:active #app-label {
+  color: var(--shadow);
+}
+
+#tmux-icon {
+  font-size: 20px;
+  color: var(--primary);
+}

@@ -1,0 +1,9 @@
+@import url("./styles/colors.css");
+@import url("./styles/runner.css");
+
+* {
+  all: unset;
+  color: var(--foreground);
+  font-size: 11pt;
+  font-family: "Iosevka";
+}

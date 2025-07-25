@@ -1,0 +1,17 @@
+[project]
+name = "fafafa"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fabric",
+]
+
+[tool.uv.sources]
+fabric = { git = "https://github.com/Fabric-Development/fabric.git" }
+
+[dependency-groups]
+dev = [
+    "pygobject-stubs>=2.13.0",
+]
