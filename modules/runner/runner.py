@@ -1,20 +1,36 @@
+from dataclasses import dataclass
 import operator
-from typing import Callable, Iterator
+from re import sub
+from typing import Iterator
+from collections.abc import Callable
 
-from fabric.utils import DesktopApp, get_desktop_applications, idle_add, remove_handler
+from fabric.utils import idle_add, remove_handler
 from fabric.widgets.box import Box
-from fabric.widgets.image import Image
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry
 from fabric.widgets.label import Label
 from fabric.widgets.scrolledwindow import ScrolledWindow
-from gi.repository import GLib, Gdk  # type: ignore :(
+from gi.repository import GLib, Gdk  # type: ignore
 
 from shared import icons
 
+type SubmitCallback = Callable[[int | str], None]
+"""We send either the integer key from the items dict, or an arbitrary user-provided string input."""
+
+
+@dataclass
+class RunnerConfig:
+    items: dict[int, str]
+    submit_callback: SubmitCallback
+
+    input_hint: str = "Search..."
+    input_password: bool = False
+
 
 class Runner(Box):
-    _app_list: list[DesktopApp] | None = None
+    _items_map: dict[int, str] | None = None
+    _selected_index: int | None = None
+    cfg: RunnerConfig | None = None
 
     def __init__(self, close_callback: Callable | None = None, **kwargs) -> None:
         super().__init__(
@@ -25,8 +41,7 @@ class Runner(Box):
         )
 
         self._arranger_handler: int = 0
-        self._selected_index = -1  # Track the selected item index
-        self._refresh_apps()  # Loads desktop apps
+        self._selected_index = None  # Track the selected item index
         self._close_callback = close_callback
 
         ### Viewport
@@ -44,7 +59,6 @@ class Runner(Box):
         ### Input Field
         self.input_entry = Entry(
             name="runner-input",
-            placeholder="Search...",
             h_expand=True,
             ### Events
             # when text content changes
@@ -84,16 +98,18 @@ class Runner(Box):
         )
 
         self._resize_viewport()
+        self._refresh_items()  # Loads desktop apps
 
         self.add(self.runner_box)
         self.show_all()
 
-    def open(self):
-        self._refresh_apps()
+    def open(self, cfg: RunnerConfig):
+        self._setup_cfg(cfg=cfg)
         self._arrange_viewport()
+        self._refresh_items()
 
         # Disable text selection when opening
-        def clear_selection():
+        def post_open():
             # Make sure no text gets selected during open
             entry = self.input_entry
             if entry.get_text():
@@ -103,37 +119,56 @@ class Runner(Box):
             return False
 
         # Schedule a selection clear after GTK finishes rendering
-        GLib.idle_add(clear_selection)
+        GLib.idle_add(post_open)
 
-    def close(self):
+    def close(self, submit_callback: bool = True):
         self.viewport.children = []
-        self._selected_index = -1  # Reset selection
+        self._selected_index = None  # Reset selection
+        if submit_callback:
+            self._submit_callback("")
+        self.cfg = None
         if self._close_callback:
             self._close_callback()
 
-    def _refresh_apps(self):
-        self._app_list = get_desktop_applications()
+    def _setup_cfg(self, cfg: RunnerConfig):
+        self.cfg = cfg
+        self.input_entry.placeholder = cfg.input_hint  # type: ignore
+        self.input_entry.tooltip_text = cfg.input_hint  # type: ignore
+        self.input_entry.password = cfg.input_password  # type: ignore
+
+    def _submit_callback(self, key: int | str):
+        if not self.cfg:
+            return
+        self.cfg.submit_callback(key)
+        self.close(submit_callback=False)
+
+    def _refresh_items(self):
+        if not self.cfg:
+            return
+        self._items_map = self.cfg.items
 
     def _resize_viewport(self):
         self.scrolled_window.set_min_content_width(
             self.viewport.get_allocation().width  # type: ignore
         )
 
-    def _filter_apps(self, query: str) -> list[DesktopApp]:
-        query = query.casefold()
-        filtered = []
-        if not self._app_list:
-            self._refresh_apps()
-            assert self._app_list
-        for app in self._app_list:
-            choices = (
-                (app.display_name or "") + app.name + (app.generic_name or "")
-            ).casefold()
-            if query in choices:
-                filtered += [app]
-        return sorted(filtered, key=lambda app: (app.display_name or "").casefold())
+    def _filter_items(self, query: str) -> dict[int, str]:
+        assert self.cfg
 
-    def _make_app_slot(self, app: DesktopApp, **kwargs) -> Button:
+        query = query.casefold()
+        filtered: dict[int, str] = {}
+        if self._items_map is None:
+            self._refresh_items()
+            assert self._items_map is not None
+        for k, val in self._items_map.items():
+            if query in val.casefold():
+                filtered[k] = val
+        return {
+            k: v for k, v in sorted(filtered.items(), key=lambda v: v[1].casefold())
+        }
+
+    def _make_item_slot(self, key: int, item: str, **kwargs) -> Button:
+        assert self.cfg
         button = Button(
             name="slot-button",
             child=Box(
@@ -141,30 +176,34 @@ class Runner(Box):
                 orientation="h",
                 spacing=10,
                 children=[
-                    Image(
-                        name="app-icon",
-                        pixbuf=app.get_icon_pixbuf(size=24),
-                        h_align="start",
-                    ),
+                    # Image(
+                    #     name="app-icon",
+                    #     pixbuf=app.get_icon_pixbuf(size=24),
+                    #     h_align="start",
+                    # ),
                     Label(
                         name="app-label",
-                        label=app.display_name or "Unknown",
+                        label=item,
                         ellipsization="end",
                         v_align="center",
                         h_align="center",
                     ),
                 ],
             ),
-            tooltip_text=app.description,
-            on_clicked=lambda *_: (app.launch(), self.close()),
+            tooltip_text=item,
+            on_clicked=lambda *_: (
+                self._submit_callback(key),
+                self.close(),
+            ),
             **kwargs,
         )
         return button
 
-    def _add_next_application(self, apps_iter: Iterator[DesktopApp]):
-        if not (app := next(apps_iter, None)):
+    def _add_next_item(self, items_iter: Iterator[tuple[int, str]]):
+        if not (item := next(items_iter, None)):
             return False
-        self.viewport.add(self._make_app_slot(app=app))
+        k, v = item
+        self.viewport.add(self._make_item_slot(key=k, item=v))
         return True
 
     def _scroll_to_selected(self, button):
@@ -201,7 +240,7 @@ class Runner(Box):
             return
 
         # starting selection from 0
-        if self._selected_index == -1 and delta == 1:
+        if self._selected_index is None:
             new_index = 0
         else:
             new_index = self._selected_index + delta
@@ -210,7 +249,7 @@ class Runner(Box):
 
     def _update_selection(self, new_index: int):
         # Unselect current:
-        if self._selected_index != -1 and self._selected_index < len(
+        if self._selected_index is not None and self._selected_index < len(
             self.viewport.get_children()
         ):
             current_button = self.viewport.get_children()[self._selected_index]
@@ -222,7 +261,7 @@ class Runner(Box):
             self._selected_index = new_index
             self._scroll_to_selected(new_button)
         else:  # Invalid index!
-            self._selected_index = -1
+            self._selected_index = None
 
     def _handle_arrange_complete(self, should_resize: bool, query: str):
         if should_resize:
@@ -233,25 +272,28 @@ class Runner(Box):
         return False
 
     def _arrange_viewport(self, query: str = ""):
+        if not self.cfg:
+            return
         if self._arranger_handler:
             remove_handler(self._arranger_handler)
+        if self._items_map is None:
+            self._refresh_items()
+            assert self._items_map is not None
 
         self.viewport.children = []
-        self._selected_index = -1  # Clear selection when viewport changes
+        self._selected_index = None  # Clear selection when viewport changes
 
-        filtered_apps_iter = iter(self._filter_apps(query=query))
+        filtered_items_iter = iter(self._filter_items(query=query).items())
 
-        # ???
-        if not self._app_list:
-            self._refresh_apps()
-            assert self._app_list
-        should_resize = operator.length_hint(filtered_apps_iter) == len(self._app_list)
+        should_resize = operator.length_hint(filtered_items_iter) == len(
+            self._items_map
+        )
 
         # Lazily add app slots
         self._arranger_handler = idle_add(
-            lambda apps_iter: self._add_next_application(apps_iter)
+            lambda items_iter: self._add_next_item(items_iter)
             or self._handle_arrange_complete(should_resize, query),
-            filtered_apps_iter,
+            filtered_items_iter,
             pin=True,
         )
 
@@ -263,18 +305,21 @@ class Runner(Box):
 
     def _handle_input_activate(self, text):
         """Handle "pressing enter" in the runner input"""
-        children = self.viewport.get_children()
-        if not children:
-            return
-
         # Only activate if we have selection or non-empty query
-        if text.strip() == "" and self._selected_index == -1:
+        if text.strip() == "" and self._selected_index is None:
             return  # Prevent accidental activation when empty
 
+        children = self.viewport.get_children()
+        if not children:
+            # TODO: process user-supplied input
+            self._submit_callback(text)
+            self.close(submit_callback=False)
+
         # Open selected index, or the first one
-        selected_index = self._selected_index if self._selected_index != -1 else 0
+        selected_index = self._selected_index if self._selected_index is not None else 0
         if 0 <= selected_index < len(children):
             children[selected_index].clicked()
+            self.close(submit_callback=False)
 
     def _handle_input_press(self, widget, event):
         """Handle key presses inside the entry"""

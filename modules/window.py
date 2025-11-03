@@ -1,6 +1,7 @@
 from fabric.widgets.wayland import WaylandWindow
+from loguru import logger
 
-from modules.runner.runner import Runner
+from modules.runner.runner import Runner, RunnerConfig
 
 
 class AppWindow(WaylandWindow):
@@ -28,10 +29,13 @@ class AppWindow(WaylandWindow):
         self.set_keyboard_mode("none")
         self._is_runner_open = False
 
-    def show_runner(self):
-        self.show_all()
-        self.set_keyboard_mode("exclusive")
-        self.runner.open()
-        self.runner.input_entry.set_text("")
-        self.runner.input_entry.grab_focus()
-        self._is_runner_open = True
+    def show_runner(self, cfg: RunnerConfig):
+        try:
+            self.show_all()
+            self.set_keyboard_mode("exclusive")
+            self.runner.open(cfg=cfg)
+            self.runner.input_entry.set_text("")
+            self.runner.input_entry.grab_focus()
+            self._is_runner_open = True
+        except Exception:
+            logger.exception("Exception when showing runner!")
